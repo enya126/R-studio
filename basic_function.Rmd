@@ -1,0 +1,119 @@
+---
+title: "HW 1"
+output: html_document
+---
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.align = "center", warning = F, message = F, R.options=list(max.print=100))
+
+# Edit the file starting below
+```
+
+## Enya Liu el27773
+
+**This homework is due on January 28, 2022 by 11:59pm. You will submit a pdf file on Gradescope.**
+
+*For all questions, include the R code that you used to find your answer (show R chunk and outputs). Answers without supporting code will not receive credit (unless no code was required). Outputs without comments will not receive credit either: Write full sentences to describe your findings.*
+
+### Question 1: (2 pts)
+
+##### The dataset `mtcars` was extracted from the 1974 Motor Trend US magazine, and comprises fuel consumption and other aspects of automobile design and performance for different cars (1973–74 models). Look up the documentation for this data frame with a description of the variables by typing `?mtcars` in the console pane. Take a look at the first 6 rows of the dataset by using an `R` function in the code chunk below. Do you know about any (or all) of these cars?
+
+```{r}
+# look at the first 6 rows
+head(mtcars)
+
+```
+
+I used head function to look at first 6 rows of this data frame.\
+I am not familiar with cars, so I don't know any of these cars.
+
+---
+
+### Question 2: (2 pts)
+
+##### How many rows and columns are there in this data frame in total? 
+```{r}
+dim(mtcars)
+```
+
+
+There are 32 rows and 11 columns in this data frame.
+
+---
+
+### Question 3: (2 pts)
+
+##### When is your birthday? Grab the value of `mpg` that corresponds to the day of your birthday (should be a number between 1 and 31). 
+
+```{r}
+# choose the 'mpg' value corresponding to my birthday
+mtcars$mpg[26]
+
+```
+
+I used my brithday, 26, as index to  find a specific 'mpg' value, and the value is 27.3.
+
+---
+
+### Question 4: (2 pts)
+
+##### Recall how logical indexing of a data frame works in R. To refresh your memory, in the example code below I ask R for the number of rows in the dataset where the variable `mpg` takes on values greater than 30. What is the comma doing in the code below (i.e., why is it necessary)?
+
+```{r}
+# Find the number of rows with nrow()
+nrow(mtcars[mtcars$mpg > 30, ])
+```
+
+The comma is separating conditions for rows and columns, and tells R that all columns are selected with rows 'mpg'>30. If we remove the comma, then we didn't specify the columns and an error would occur.  
+
+---
+
+### Question 5: (2 pts)
+
+##### Find the mean value of the numeric variable of your choice among: `disp`, `hp`, `drat`, `wt`, or `qsec`. Make sure to report the mean with its corresponding unit. 
+
+```{r}
+# find my choice 'wt' from the data frame
+# then find mean of 'wt'
+mean(mtcars$wt)
+```
+
+The mean value of weight is 3.21725 lbs of all different cars in this data frame. 
+
+---
+
+### Question 6: (4 pts)
+
+##### Let's make a plot in base R. Create a scatterplot to investigate the relationship between `mpg` and the numeric variable of your choice among: `disp`, `hp`, `drat`, `wt`, or `qsec`. Make sure to give a title to the graph. Comment on the relationship.
+
+```{r}
+# scatterplot of mpg and wt in the data frame
+# add title and x, y labels
+plot(mtcars$wt, mtcars$mpg, main = 'Relationship between mpg and weight', xlab='weight', ylab='mpg')
+
+```
+
+There looks like a correlation between weight and mpg. When weight increases, mpg decreases. 
+
+---
+
+### Question 7: (3 pts)
+
+##### Check that your code is well documented with comments in the R chunks. Make sure you wrote sentences and reported units when necessary.
+
+*No answer needed*
+
+---
+
+### Question 8: (3 pts)
+
+##### Knit your file into html. Is it working? If not, try to decipher the error message (look up the error message, consult websites such as [stackoverflow](https://stackoverflow.com/) or [crossvalidated](https://stats.stackexchange.com/). Once it knits and the html window pops out, click on `Open in Browser` at the top left. Print your html file into pdf from your browser. Any issue? Ask your classmates, come by student hours! 
+
+*No answer needed*
+
+---
+
+```{r, echo=F}
+## DO NOT DELETE THIS BLOCK!
+Sys.info()
+```

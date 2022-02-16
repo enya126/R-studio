@@ -1,0 +1,287 @@
+---
+title: "HW 2"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.align = "center", warning = F, message = F, R.options=list(max.print=100))
+
+# Edit the file starting below
+```
+
+## Enya Liu el27773
+
+**This homework is due on February 4, 2022 by 11:59pm. You will submit a pdf file on Gradescope.**
+
+*For all questions, include the R code that you used to find your answer (show R chunk and outputs). Answers without supporting code will not receive credit (unless no code was required). Outputs without comments will not receive credit either: Write full sentences to describe your findings.*
+
+### Question 1: (2 pts)
+
+##### Type the word `letters` into the R chunk below. What does this predefined object in R contain? What is this object's data type/class? How many elements does it contain? *Include base R commands used to answer all three questions.*
+
+```{r}
+# test predefined word 'letters'
+letters
+# find type of 'letters'
+class(letters)
+# find how many elements 'letters' contains
+length(letters)
+```
+
+'letters' contains lowercase letters from a to z, and all of the letters are characters.\
+There are 26 characters in total.
+
+------------------------------------------------------------------------
+
+### Question 2: (2 pts)
+
+##### Now, say we want to encode your name (or any other message) using a *cipher*. We want to replace every letter of a given character vector with the letter of the alphabet that is k positions after it in the alphabet. For example, if the letter was `a` and `k = 3`, we would replace it with `d`. We will also want it to loop around, so if the letter was `y` we'd replace it with `b`. For example, with `k = 3`, the word `dog` would become `grj`. You'll need a few tools to accomplish this. So let's take it step by step.
+
+#### First, note that `A %in% B` tests each element of A to see whether it appears in B.
+
+```{r}
+letters %in% c("t","e","s","t")
+```
+
+##### How many elements are false in the resulting logical vector? *Include base R commands used to answer this question (not manually).*
+
+```{r}
+# calculate the true elements in logical vector
+true_elements = sum(letters %in% c("t","e","s","t"))
+# use total elements to minus the true elements to get the false elements
+false_elements = length(letters) - true_elements
+# get the result
+false_elements
+```
+
+There are 23 false elements in the resulting logical vector.
+
+------------------------------------------------------------------------
+
+### Question 3: (2 pts)
+
+##### Another function that will be useful is `which()`, a handy function that takes a logical vector argument and returns the indices/positions that are TRUE. For example, run the following code:
+
+```{r}
+# note: T is shorthand for TRUE, F for FALSE
+which(c(F,T,F,T,F,T))
+```
+
+#### It tells you that elements in position 2, 4, and 6 are true. Now, use the `which` function, along with `%in%` and `letters` (from the previous questions), to find which positions in the alphabet the letters in the name `layla` occupy (saved as an object called name below). Do you notice any issue?
+
+```{r}
+# use which function to find the position of layla in letters
+which(letters %in% c("l","a","y","l","a"))
+```
+
+The letters 'a', 'l', 'y' occupy in 1, 12, 25 positions of the alphabet.\
+However, here is a issue that the position of repeated letters are not tested. So there is only 3 positions, and we do not know which position correspond to which letter. 
+
+------------------------------------------------------------------------
+
+### Question 4: (2 pts)
+
+##### How can we avoid this? We can test each letter one at a time in their correct order! One approach would be to use a `for` loop. Write a for loop that goes through each element of the character vector `name` (i.e., `layla`) one at a time, finds its position in the alphabet, and saves each position in a vector called `positions`. Confirm that the positions are correct by using `positions` to find the corresponding letters with `letters`.
+
+For example, the name "ali" would give you the positions 1,12, and 9. You can grab the letters in those positions by doing `letters[c(1, 12, 9)]`.
+
+```{r}
+# create an empty list to store the position
+positions <- list()
+# create a name like layla to test the for loop
+name <- strsplit('layla', split = '')
+# for loop iterates to find the position of letters
+for (i in name) {
+  positions <- match(i, letters)
+  print(positions)
+}
+# check the position using the output of the for loop
+letters[c(12,1,25,12,1)]
+```
+
+------------------------------------------------------------------------
+
+### Question 5: (2 pts)
+
+##### Instead of initializing the positions and writing a `for` loop for each new name we would like to encode, let's write a function! Define a function that takes a name (i.e., a character vector whose elements contain single letters) as the argument and returns the alphabetical positions each of those letters occupy. Call the function `get_position`. Once you have defined it, test it out with `layla`. Did you get all positions?
+
+```{r}
+# write a function
+get_position <- function(name){
+  for (i in name) {
+  positions <- match(i, letters)
+  }
+  positions
+}
+
+# test the position
+print(positions)
+
+# test out the function with 'layla'
+name <- strsplit('layla', split = '')
+pos <- get_position(name)
+letters[pos]
+```
+
+Yes, I got all positions for 'layla'
+
+------------------------------------------------------------------------
+
+### Question 6: (2 pts)
+
+##### Let's encode the name `layla`! Shift all the positions by 1 and index `letters` to obtain the encoded name. Is that a real name?
+
+```{r}
+# find the position of 'layla'
+# split the word
+name <- strsplit('layla', split = '')
+pos <- get_position(name)
+# shift the positions by 1
+pos = pos + 1
+# encode with corresponding index
+letters[pos]
+
+```
+
+The encoded name is 'mbzmb'. It is not a real name. 
+
+------------------------------------------------------------------------
+
+### Question 7: (3 pts)
+
+##### What happens when we shift the positions past `z`, the 26th and final letter of the alphabet? Shifting the positions in `layla` up by k = 2 should give `ncanc`, but since there is no 27th element of letters, it will return `NA` instead of `a`. Try it in the code chunk below.
+
+```{r}
+# try a word with 'z'
+name <- strsplit('zip', split = '')
+pos <- get_position(name)
+# shift the position
+pos = pos + 1
+# check the result
+letters[pos]
+# The result is NA  "j" "q" because there's no 27th letter of the alphabet. 
+
+# try 'layla' up by k = 2
+name <- strsplit('layla', split = '')
+pos <- get_position(name)
+# shift the position
+pos = pos + 2
+# check the result
+letters[pos]
+# The result is  "n" "c" NA  "n" "c" because there's no 27th letter of the alphabet. 
+
+```
+
+##### How do we make it loop around so that `z` shifted up 1 becomes `a`? In other words, how can we make 27 become 1, 28 become 2, 29 becomes 3, etc.? We will use the modulo operator `%%` (which tells you the remainder when you divide one number by another). Try running the code below, 27 %% 26 (pronounced "27 modulo 26") below. It returns 1, the remainder when the lefthand number (27) is divided by the right (26).
+
+```{r}
+27 %% 26
+```
+
+##### We just need our shifted positions modulo 26. You can do this with `(positions + k) %% 26`. One last minor issue: 26 %% 26 is 0 but we want it to return 26. There are a few fixes: 
+- test if `positions + k` is less than 27: if it is, use `positions + k` for the encoded positions, otherwise use `positions + k %% 26`. 
+- replace any 0 in the shifted vector by 26. 
+
+##### Find some method you like to fix this issue. Then, put it all together: use the above techniques to encode the word `layla` by shifting every letter `k = 3` positions forward correctly. Is that a real name?
+
+```{r}
+# get 'layla' letters position
+name <- strsplit('layla', split = '')
+pos <- get_position(name)
+
+# create an empty vector to store new positions
+shift <- c()
+
+# write a for loop with if statements to shift the position by 3
+for (i in pos){
+  if ((i + 3) < 27){
+    i = i + 3
+    shift <- c(shift, i)
+  } else{
+    shift <- c(shift, (i+3) %% 26)
+  }
+}
+
+# check the result
+letters[shift]
+```
+
+The result is 'odbod', and it is not a real name. 
+
+------------------------------------------------------------------------
+
+### Question 8: (2 pts)
+
+##### One final objective: Write a function that incorporates all the work you have done to achieve this task. Name the function `cipher`. This function should take two arguments: a `word` (character vector to be encoded) and how many positions to shift (`k`). Fill in the code below with what you have been using above. Check your code with `layla` shifted by 3 positions and test your code with your own name with the shift of your choice! Is that a real name?
+
+```{r}
+# edit the code below (make sure to edit comment)
+
+cipher <- function(word, k) {
+  shifted <- c()
+  position = get_position(list(word))
+  for (i in position){
+    if ((i + k) < 27){
+      shifted <- c(shifted, i+k)
+    } else{
+      shifted <- c(shifted, (i+k) %% 26)
+    }
+  }
+  letters[shifted]
+}
+
+# check
+cipher(c("l", "a", "y", "l", "a"), 3)
+
+# test your name!
+cipher(c("e","n","y","a"), 3)
+```
+
+I checked the cipher function with 'layla' and it worked.\
+Then I tested the function with my name 'Enya', and the output is 'hqbd' which is not a real name. 
+
+------------------------------------------------------------------------
+
+### Question 9: (1 pt)
+
+##### A less guided question... You were given the code `oldp`. Can you decipher the code and find the name hidden behind it?
+
+```{r}
+# write a decipher function
+decipher <- function(word, k) {
+  shifted <- c()
+  position = get_position(list(word))
+  for (i in position){
+    if ((i + k) > 0){
+      shifted <- c(shifted, i+k)
+    } else{
+      shifted <- c(shifted, (i+k+26))
+    }
+  }
+  print(letters[shifted])
+}
+
+# to find out the name, we need to find the index
+# k is between -1 and -25
+# test out all possibilities with a for loop
+for (i in 1:25){
+  decipher(c("o","l","d","p"),(-i))
+}
+
+```
+
+Through out all possible combinations I found, the name hidden is 'liam'. 
+
+------------------------------------------------------------------------
+
+### Formatting: (2 pts)
+
+##### Comment your code, write full sentences, and knit your file!
+
+
+------------------------------------------------------------------------
+
+    ```{r, echo=F}
+## DO NOT DELETE THIS BLOCK!
+Sys.info()
+```

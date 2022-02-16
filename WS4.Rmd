@@ -1,0 +1,301 @@
+---
+title: "Worksheet 4: More visualization with ggplot"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# The following code is a basic setup for your document
+# You won't have to edit it (unless you want to!)
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.align = "center", warning = F, message = F, R.options = list(max.print = 100))
+```
+
+## 1. Loading packages
+
+Remember to call the package `ggplot2` which contains the functions we will use for visualization:
+
+```{r}
+# Call a package
+library(ggplot2)
+```
+
+## 2. Getting a dataset
+
+The dataset we will use for this worksheet is `msleep` which is part of the `ggplot2` package. It contains information about mammals, their sleeping habits, and other characteristics. Let's take a look:
+
+```{r}
+# Take a look at the dataset
+head(msleep)
+
+# More information about the observations, variables, ...
+str(msleep)
+
+# Let's save msleep as a data frame in our environment
+msleep <- as.data.frame(msleep)
+```
+
+## 3. Representing categorical variables
+
+### a. Using a bar graph
+
+Let's investigate if mammals are mainly carnivore, herbivore, insectivore, or omnivore with a bar graph. What we would like to represent on the y-axis is the frequency of each category: that's a statistic!
+
+```{r}
+# Use geom_bar() with a statistic option
+ggplot(msleep, aes(x = vore)) +
+  geom_bar(stat = "count")
+```
+
+Note that using a `geom_` layer and a `stat` statement **or** using a `stat_` layer and a `geom` statement are equivalent:
+
+```{r}
+ggplot(msleep, aes(x = vore)) +
+  stat_count(geom = "bar")
+```
+
+```{r}
+# Replace `stat =` by setting aesthetics for the y axis, calculating a percentage
+ggplot(msleep, aes(x = vore)) +
+  geom_bar(aes(y = (..count..)/sum(..count..))) 
+```
+
+### b. Handling missing values for a categorical variable
+
+As showed in the first few plots, there is a category called NA, meaning that there is no information about the diet of the mammal.
+
+```{r}
+# Create a new dataset which excludes rows where vore is NA
+msleep_nm <- msleep[!is.na(msleep$vore), ] 
+# only select rows with non-missing values: ! and function is.na()
+```
+
+Now, let's visualize the distribution of the different diets with proportions, using labels, and adding some color by diet:
+
+```{r}
+# Now represent the diets without the NA category
+ggplot(msleep_nm, aes(x = vore)) + 
+  # fill will fill the bar, while color = '' only colors the outside of bars
+  geom_bar(aes(y = (..count..)/sum(..count..), fill = vore)) + # fill the shape with some color
+  labs(
+    title = "Distribution of diets for mammals",
+    x = "Types or diets",
+    y = "Proportion"
+  )
+```
+
+### c. Creating a new categorical variable
+
+To differentiate between small and large mammals based on their body weight, let's create a new variable `size`.
+
+```{r}
+# Create a new variable with ifelse(condition, if_true, if_false)
+# Use the median to separate the lower half of mammals (small) based on their body weight
+msleep_nm$size <- ifelse(msleep_nm$bodywt < median(msleep_nm$bodywt), "Small", "Large")
+```
+
+```{r}
+# Check the proportions: why does it make sense?
+ggplot(msleep_nm, aes(x = size)) +
+  geom_bar(aes(y = (..count..)/sum(..count..)))
+```
+
+### d. Comparing two categorical variables
+
+We can create stacked plots that compares the distribution of two variables:
+
+```{r}
+# Let's represent the diets on the x-axis and the size as a color
+ggplot(msleep_nm, aes(x = vore, fill = size)) +
+  geom_bar()
+```
+
+Or design a side-by-side bar graph with the option `dodge`:
+
+```{r}
+# Side-by-side bar graph
+ggplot(msleep_nm, aes(x = vore, fill = size)) +
+  geom_bar(position = "dodge") 
+```
+
+Or with the relative distribution at each level (using proportions with `fill`):
+
+```{r}
+# Representing the distribution of size (color) for each diet (bar)
+ggplot(msleep_nm, aes(x = vore, fill = size)) +
+  geom_bar(position = "fill")
+```
+
+Note that the default label for the y-axis is count. We might want to overwrite that! Let's also switch the two variables:
+
+```{r}
+# Representing the distribution of diet (color) for each size (bar)
+ggplot(msleep_nm, aes(x = size, fill = vore)) + 
+  geom_bar(position = 'fill') +
+  labs(y = "Proportion")
+```
+
+Instead of proportions, let's represent percentages by changing the scale of the y-axis:
+
+```{r}
+# Representing the distribution of diet (color) for each size (bar)
+ggplot(msleep_nm, aes(x = size, fill = vore)) + 
+  geom_bar(position = 'fill') +
+  labs(y = "Percentage") + 
+  # use an option called scales::percent to display percentages on tick marks for the y-axis
+  scale_y_continuous(labels = scales::percent)
+```
+
+### e. Comparing one categorical variable with a numeric variable
+
+We can represent the mean value of a numeric variable for each level of a categorical variable:
+
+```{r}
+# Represent the mean total amount of sleep depending on the diet
+ggplot(msleep_nm, aes(x = vore, y = sleep_total, fill = vore)) +
+  geom_bar(stat = "summary", fun = "mean")
+```
+
+To represent how spread out the values are within a category, we can use error bars (representing +- 1 standard deviation from the mean):
+
+```{r error}
+ggplot(msleep_nm, aes(x = vore, y = sleep_total, fill = vore)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  # adding error bar, here mean_se = mean standard error.
+  # summary = create summary statistics
+  geom_errorbar(stat = "summary", fun.data = "mean_se") 
+```
+
+### f. Dealing with many categories
+
+If there are many categories, the bar plot can become messy because of the labels:
+
+```{r}
+# Many categories for order
+ggplot(msleep_nm, aes(x = order, fill = order)) +
+  geom_bar()
+```
+
+```{r}
+# Solution 1 : Angle the axis labels and remove the legend
+ggplot(msleep_nm, aes(x = order, fill = order)) +
+  geom_bar() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        legend.position="none") 
+```
+
+```{r}
+# Solution 2 : flip the orientation of the bars
+ggplot(msleep_nm, aes(y = order, fill = order)) +
+  geom_bar() + 
+  theme(legend.position="none")
+```
+
+## 4. Representing numeric variables
+
+### a. Using a scatterplot with different shapes
+
+Let's investigate the relationship between body weight and brain weight for different diets (represented by different shapes):
+
+```{r}
+# Use the aesthetics of shape
+ggplot(msleep_nm, aes(x = bodywt, y = brainwt, shape = vore)) +
+  geom_point(size = 3)
+```
+
+There are two data points that distort the view of the rest of the data points because the weights are much higher than other values:
+
+```{r}
+msleep_nm[msleep_nm$bodywt > 1000,]
+```
+
+### b. Changing scales
+
+We can adjust the scale on the x-axis and y-axis to focus on the area where most of the points are:
+
+```{r}
+# Define new limits for the x- and y-axis
+ggplot(msleep_nm, aes(x = bodywt, y = brainwt, shape = vore)) +
+  geom_point(size = 3) +
+  xlim(0,1000) + 
+  ylim(0,2)
+```
+
+Because there is a high variation between the weights, we can consider a logarithmic scale for both the body weight and brain weight:
+
+```{r}
+# Adding a layer with `scale_`
+ggplot(msleep_nm, aes(x = bodywt, y = brainwt, shape = vore)) +
+  geom_point(size = 3) +
+  # log helps us to visualize both small values and large values
+  # better plot
+  scale_x_log10() + 
+  scale_y_log10()
+```
+
+```{r}
+# Changing threshold for scientific notation
+options(scipen = 999)
+
+# Redo the graph
+ggplot(msleep_nm, aes(x = bodywt, y = brainwt, shape = vore)) +
+  geom_point(size = 3) +
+  scale_x_log10() + 
+  scale_y_log10()
+```
+
+### c. Playing with size, color, and shape
+
+Let's compare the REM sleep associated with the total amount of sleep of these mammals for different diets, also taking into account their body weight.
+
+```{r}
+ggplot(msleep_nm, aes(x = sleep_total, y = sleep_rem, shape = vore, color = vore)) +
+  geom_point(aes(size = bodywt))
+```
+
+Think about what the color, shape, size, represent. Is any information redundant?
+
+Notice in the scatterplot that the variable `bodywt` does not seem to have many high values? Let's look at the distribution of body weight with a boxplot:
+
+```{r}
+# Distribution of `bodywt`
+ggplot(msleep_nm, aes(y = bodywt)) +
+geom_boxplot()
+```
+
+```{r}
+# There are a few high values for body weight, let's try a log-transformation
+ggplot(msleep_nm, aes(y = log10(bodywt))) +
+geom_boxplot()
+```
+
+Now, let's compare REM sleep to the total amount of sleep for different levels of body weights in a logarithmic scale:
+
+```{r}
+# Use logarithmic scale of body weight for the size of the data points
+ggplot(msleep_nm, aes(x = sleep_total, y = sleep_rem, color = log10(bodywt))) +
+  geom_point(size = 3) +
+  # choose colors of the scale from yellow to red
+  scale_color_gradient(low = "yellow", high = "red")
+```
+
+## 5. Color palettes
+
+The default colors created by ggplot can be replaced by calling some color palette. Here is a list of the different ones that exist:
+
+```{r}
+RColorBrewer::display.brewer.all()
+```
+
+A few examples with `scale_fill_brewer()`:
+
+```{r}
+# Shades of blue
+ggplot(msleep_nm, aes(x = vore)) + 
+  geom_bar(aes(y = (..count..)/sum(..count..), fill = vore)) +
+  scale_fill_brewer()
+
+# Shades of orange
+ggplot(msleep_nm, aes(x = vore)) + 
+  geom_bar(aes(y = (..count..)/sum(..count..), fill = vore)) +
+  scale_fill_brewer(palette = "Oranges")
+```
