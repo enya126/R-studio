@@ -1,0 +1,248 @@
+---
+title: "HW 9"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.align = "center", warning = F, message = F, R.options=list(max.print=100,dplyr.print_max=100))
+
+# Edit the file starting below
+```
+
+## Enya Liu el27773
+
+**This homework is due on April 22, 2022 by 11:59pm. You will submit a pdf file on Gradescope.**
+
+*For all questions, include the R code that you used to find your answer (show R chunk and outputs). Answers without supporting code will not receive credit (unless no code was required). Outputs without comments will not receive credit either: Write full sentences to describe your findings.*
+
+------------------------------------------------------------------------
+
+###### Load the packages `tidyverse`, `factoextra`, and `cluster`.
+
+```{r, message = FALSE}
+# Call libraries (if factoextra or cluster were not installed, remember to install them)
+library(tidyverse)
+library(factoextra)
+library(cluster)
+```
+
+------------------------------------------------------------------------
+
+## Question 1: (2 pts)
+
+###### The dataset for this homework comes from the article:
+
+###### *Tsuzuku N, Kohno N. 2020. The oldest record of the Steller sea lion Eumetopias jubatus (Schreber, 1776) from the early Pleistocene of the North Pacific. <https://doi.org/10.7717/peerj.9709>*
+
+###### Read the ***Abstract*** of the article and the section called *Results of Morphometric Analyses*. What was the goal of this study and what was the main finding?
+
+The goal of the study is to identity the genus of the earliest sea lion fossil, GKZ-N 00001. \
+The main finding was GKZ-N 00001 belongs to the Steller sea lion E. jubatus. 
+
+------------------------------------------------------------------------
+
+## Question 2: (1 pt)
+
+###### Under the supplemental information, the data was retrieved from a word document into a `.csv` document. Import the dataset from GitHub. How many rows and how many columns are in this dataset? What does a row represent? What does a column represent?
+
+```{r, message=FALSE}
+library(tidyverse)
+
+# upload data from github
+HW9 <- read_csv("https://raw.githubusercontent.com/laylaguyot/datasets/main//Sealions.csv")
+```
+
+```{r}
+# take a look at this dataset
+head(HW9)
+
+```
+
+There are 51 rowsand 39 columns.\
+A row represent the data for one of the 51 sea lion sample.\
+A column represent the sea lion sample, and other 38 columns represent measurements of external morphologies. 
+
+------------------------------------------------------------------------
+
+## Question 3: (1 pt)
+
+###### Before we can analyze the data, let's do some cleaning. When importing this dataset into RStudio, which variables were considered numeric? Why are some measurements not considered as numeric?
+
+```{r}
+# use glimpse to check the class
+glimpse(HW9)
+
+```
+
+K and AD were numeric variables. Some measurements were actually numeric variables but in a chr format because there are "-" in the columns. 
+
+------------------------------------------------------------------------
+
+## Question 4: (1 pt)
+
+###### Using `dplyr` functions, replace all `-` in the dataset by missing values *NA* then make sure all measurements are defined as numeric variables with `mutate_at()`. Overwrite the dataset. What is the mean rostral tip of mandible `C`?
+
+```{r}
+# use mutate at to replace "-" with NA
+HW9 <- HW9 %>%
+  # vars select variables quickly and -XXX means deselect those variable
+  mutate_at(vars(-ID, -K), ~na_if(.,"-")) 
+# convert the variables to numeric variables
+HW9[, c(2:39)] <- sapply(HW9[, c(2:39)], as.numeric)
+# find mean of c
+mean(HW9$C, na.rm = T) # ignore na
+```
+The mean rostral tip of mandible 'C' is 34.87
+
+
+------------------------------------------------------------------------
+
+## Question 5: (1 pt)
+
+###### Using `dplyr` functions, only keep numeric variables that are not missing for the fossil specimen GKZ-N 00001. *Hint: you can use `select_if()` on the condition that `HW9_clean[51,]` has *no* missing value with `is.na()`).* Then remove the rest of the missing values and save the resulting dataframe as `HW9_NA`. How many columns and how many rows are remaining in this dataset?
+
+```{r}
+# your code goes below this line (make sure to edit comment)
+HW9_NA <- HW9 %>%
+  select_if(!(is.na(HW9[51,]))) %>%
+  na.omit()
+  
+
+```
+
+There are 42 rows and 23 columns remaining. 
+
+------------------------------------------------------------------------
+
+## Question 6: (1 pt)
+
+###### Use `dplyr` functions on `HW9_NA` to split the `ID` variable into two variables `species` and `sex` with the function `separate()`. *Hint: in the `ID` variable, what symbol separates the species from sex?* The article states that the fossil specimen has to be male. Replace the missing value of `sex` for the fossil specimen GKZ-N 00001. *Hint: You could use the functions `mutate()` and `replace_na()`.* Save the resulting dataframe as `HW9_clean`.
+
+```{r}
+# your code goes below this line (make sure to edit comment)
+HW9_clean <- HW9_NA %>%
+  # here '\\' is needed because [ has a meaning in regex
+  separate(col = ID, into = c("species", "sex"), sep = '\\[')
+# only keep m or f as sex
+HW9_clean$sex <- substr(HW9_clean$sex,0,1)
+HW9_clean <- HW9_clean %>%
+  # assign GKZ-N sex as male
+  # replace na only in one column
+  mutate(sex = replace_na(sex,"m" ))
+
+
+```
+
+------------------------------------------------------------------------
+
+## Question 7: (1 pt)
+
+###### Using `dplyr` functions, only keep numeric variables and scale each numeric variable. Save the resulting dataframe as `HW9_num`. What should the mean of the scaled variable of the rostral tip of mandible C be?
+
+```{r}
+# scale it
+HW9_num <- HW9_clean %>%
+  mutate_if(is.numeric,scale)
+# find mean
+mean(HW9_num$C)
+
+```
+
+The mean is 1.487009e-16 of C. 
+
+------------------------------------------------------------------------
+
+## Question 8: (2 pts)
+
+###### Let's now perform PCA on the measurements available for the fossil specimen GKZ-N 00001. Using the function `prcomp()`, calculate the principal components (PCs) for the scaled data, `HW9_num`, obtained in Question 7. Construct a scree plot using the package `factoextra` with the function `fviz_eig()`. What is the cumulative percentage of explained variance for PC1 and PC2? 
+
+```{r}
+# visualize pca
+HW9_num %>%
+  select(is.numeric) %>%
+  prcomp() %>%
+  fviz_eig(addlabels = TRUE)
+
+```
+
+The cumulative percentage is 84.8% for just dimension 1. 
+
+------------------------------------------------------------------------
+
+## Question 9: (2 pts)
+
+###### Using `fviz_contrib()`, find the 5 variables that contribute the most to PC1 and PC2. Comment on how differently these two PCs seem to be built.
+
+```{r}
+# visualize dm1 first
+HW9_num %>%
+  select(is.numeric) %>%
+  prcomp() %>%
+  fviz_contrib(choice = "var", axes = 1, top = 5)
+# visualize dm2
+HW9_num %>%
+  select(is.numeric) %>%
+  prcomp() %>%
+  fviz_contrib(choice = "var", axes = 2, top = 5)
+```
+
+The top 5 variables that contribute most to dimension 1 are more evenly distributed.\
+The top 1 variable to dimension 2 contributed 75%. 
+
+------------------------------------------------------------------------
+
+## Question 10: (2 pts)
+
+###### How many *known species* are there in `HW9_clean` from question 6? Therefore, how many clusters should we look for to identify what species GKZ-N 00001 most likely belongs to? Using `pam()` on `HW9_num`, run the PAM clustering algorithm. *Note: make sure to call the `cluster` package.*
+
+```{r}
+library(cluster)
+# apply pam
+pam_results <- HW9_num %>%
+  # here use k=3 because we have 3 species
+  pam(k=3)
+# Save cluster assignment as a column in your dataset
+HW9_pam <- HW9_num %>%
+  mutate(cluster = as.factor(pam_results$clustering))
+HW9_pam
+```
+
+GKZ-N 00001 most likely belongs to species in cluster 1. 
+
+------------------------------------------------------------------------
+
+## Question 11: (2 pts)
+
+###### Using `fviz_cluster()` and the PAM results in question 10, represent the observations. In the aesthetics, shape the observations by their `species`. The fossil specimen GKZ-N 00001 appears to be close to which species? *Note: make sure to add the legend for shape by adding `geom_point()` and `guides()`.*
+
+```{r}
+# your code goes below this line (make sure to edit comment)
+fviz_cluster(pam_results, data = HW9_clean) +
+  geom_point(aes(shape = HW9_clean$species)) +
+  guides(shape = guide_legend(title = "shape"))
+
+```
+
+The GKZ-N 00001 appears to be close to E.jubatus species. 
+
+------------------------------------------------------------------------
+
+## Question 12: (2 pts)
+
+###### Putting it all together. Reflect on and summarize in 1-2 sentences the different steps taken through this assignment. Compare your conclusions to the findings discussed by the researchers in the article (cite their findings).
+
+First, we cleaned up the data by removing some columns and rows, then we scale it and did PCA and clustering to find which is the closest species to GKZ-N 00001.\
+The researchers also find that GKZ-N 00001 is closest to E. jubatus species. 
+
+------------------------------------------------------------------------
+
+## Formatting: (2 pts)
+
+###### Comment your code, write full sentences, and knit your file!
+
+------------------------------------------------------------------------
+
+```{r, echo=F}
+## DO NOT DELETE THIS BLOCK!
+Sys.info()
+```
