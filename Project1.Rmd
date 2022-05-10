@@ -1,0 +1,109 @@
+---
+title: "Project1"
+author: "Enya Liu"
+date: "3/29/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## The effect of job training on earnings
+This project used two packages to find out the effect of job training on earning from 1974 to 1978. The variables include control group or treated group, education, black or not, Hispanic or not, age, mirrage, completed high school or not, and year 74, 75 and 78.\
+These data were acquired from R package DAAG.\
+As a junior, this is interesting to me because I am also planning my career and looking for internships. I wonder how much impact job training will have on earnings.\
+Generally, I believe trained group has a higher income than control group when education, year and other variables were controlled. 
+
+#### 1. load the data
+
+```{r}
+library(tidyverse)
+# install package
+# install.packages("DAAG")
+library(DAAG)
+# load two datasets
+nswdemo <- as.data.frame(nswdemo)
+psid <- as.data.frame(psid1)
+```
+
+### 2. Tidying
+
+```{r}
+# remove na
+nswdemo <- nswdemo %>%
+  na.omit()
+psid <- psid %>%
+  na.omit()
+```
+
+### 3. Joining
+
+```{r}
+tot_data <- nswdemo %>%
+  full_join(psid, by=intersect(colnames(nswdemo), colnames(psid)))
+# remove na after join
+tot_data <- tot_data %>%
+  na.omit()
+# take a look at the joined data
+head(tot_data)
+```
+
+### 4. Wrangling
+
+```{r}
+# filter,  select,  arrange,  group_by, mutate, summarize
+tot_data <- tot_data %>%
+  # select columns
+  select(trt, age,educ,nodeg,re74,re75,re78) %>%
+  # filter people less than 30
+  filter(age < 30) %>%
+  # mutate to see their changes through years
+  mutate(change1 = re75-re74, change2 = re78-re75) %>%
+  # remove any participants that do not have any earnings in 1974,1975 and 1978
+  filter(change1 != 0 | change2 != 0)
+
+summary_data <- tot_data %>% 
+  # group_by education years and treatment group
+  group_by(educ, trt) %>%
+  # summarize mean
+  summarise(mean_change1 = mean(change1), mean_change2 = mean(change2)) %>%
+  arrange(desc(educ)) %>%
+  mutate(overall_change = mean_change2-mean_change1)
+```
+```{r}
+# install.packages("kableExtra")
+library(kableExtra)
+# use kable package to show result of data wrangling
+summary_data %>%
+  kbl() %>%
+  kable_styling()
+```
+### Summary
+From data wrangling, we can see that there is a difference between treated group and control group. For participants who have 4 or 5 years of education, the treated group has a lower increase in earning than the control group. So the job training was not useful in increasing their real earnings.\
+However, if participants have longer years of education, then the job training is useful in increasing their real earnings.\
+Another interesting phenomenon here is that the treated group tend to have more negative income growth in the first two years (1974 and 1975) than the control group, then the treated group had a higher rate of income growth, and their real earnings was positive in the next two years (1975 to 1978).\
+In general, I believe the job training was useful for high educated participants in increasing their real earnings. Treated group have a greater increase in real earning. This may be because people with different years of education have different jobs which could be explored in the future. 
+
+### 5. Creating Visualisations
+
+```{r}
+# scatterplot
+summary_data %>%
+  ggplot(aes(x = educ, y=overall_change, col = as.factor(trt))) + geom_point() +geom_line() + ggtitle('The changes in real earnings of control group vs. treated group')+ xlab('years of education') + ylab('change in real earnings (dollar)') + labs(color='treated group:1 vs. control group: 0')
+```
+
+##### This is a scatter plot showing the change in real earnings of treated group and control group when years of education was controlled and considered. From the trend we could conclude that job training does not have a significant effect on earnings when years of education is low. But there is an increase in earnings of treated group when years of education is high. 
+
+
+```{r}
+# use stat func
+# plot a bar plot
+tot_data %>%
+  group_by(age, trt) %>%
+  summarize(tot_change = mean(change2) - mean(change1)) %>%
+  ggplot(aes(x=age, y = tot_change, fill = as.factor(trt))) + geom_bar(stat = 'identity') + facet_wrap("trt") + ggtitle('The changes in real earnings over age')+ xlab('age (year)') + ylab('change in real earnings (dollar)') + labs(color='treated group:1 vs. control group: 0')
+```
+
+##### This is a bar plot showing the change in real earnings of treated group and control group when age was controlled and considered.\
+##### From this bar plot, we could see that participants between 17 - 24 years old do not vary in earnings whether they receive a job training or not. However, when participants are older, the treated group has a higher increase in real earning overtime. 
