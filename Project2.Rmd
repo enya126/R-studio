@@ -1,0 +1,267 @@
+---
+title: "Project2"
+author: "Enya"
+date: "5/7/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## The effect of job training on earnings
+This project used two packages to find out the effect of job training on earning from 1974 to 1978. The variables include control group or treated group, education, black or not, Hispanic or not, age, mirrage, completed high school or not, and year 74, 75 and 78.\
+These data were acquired from R package DAAG.\
+As a junior, this is interesting to me because I am also planning my career and looking for internships. I wonder how much impact job training will have on earnings.\
+Generally, I believe trained group will be a factor that exist in the high real earning cluster and explains most variation in this dataset. 
+
+#### Loading and tidying the data
+```{r}
+library(tidyverse)
+# install package
+# install.packages("DAAG")
+library(DAAG)
+library(cluster)
+library(factoextra)
+# load two datasets
+nswdemo <- as.data.frame(nswdemo)
+psid <- as.data.frame(psid1)
+# remove na
+nswdemo <- nswdemo %>%
+  na.omit()
+psid <- psid %>%
+  na.omit()
+tot_data <- nswdemo %>%
+  full_join(psid, by=intersect(colnames(nswdemo), colnames(psid)))
+# remove na after join
+tot_data <- tot_data %>%
+  na.omit()
+# take a look at the joined data
+head(tot_data)
+```
+```{r}
+tot_data <- tot_data %>%
+  # select columns
+  select(trt, age,educ,nodeg,re74,re75,re78) %>%
+  # treatment group and high school degree are factors
+  mutate(trt = as.factor(trt), nodeg = as.factor(nodeg))
+head(tot_data)
+```
+
+#### Find correlation
+```{r}
+# build a correlation matrix
+data_num <- tot_data %>%
+  select_if(is.numeric) 
+cor(data_num, use = "pairwise.complete.obs")
+```
+```{r}
+library(psych)
+pairs.panels(data_num, 
+             method = "pearson", # correlation coefficient method
+             hist.col = "blue", # color of histogram 
+             smooth = FALSE, density = FALSE, ellipses = FALSE)
+```
+The most correlated variables are real earnings in 1974 and real earnings in 1975 here. They have a positive correlation of 0.87 which means people have high real earnings in 1974 tend to have high real earnings in 1975. \
+Age and real earning has relatively low correlations.\
+Education and real earnings has low positive correlation coefficients, but the correlation between them increases from 1974 to 1978 (from 0.36 to 0.4).
+
+#### Clustering
+```{r}
+# find the number of clusters
+fviz_nbclust(data_num, pam, method = "silhouette")
+```
+The optimal number of clusters is 2 to maximize silhouette width. 
+
+```{r}
+# scale the data first
+tot_data2 <- tot_data %>% 
+  select_if(is.numeric) %>%
+  scale
+# perform k-means clustering
+kmeans_results <- tot_data2 %>%
+  kmeans(2)
+```
+
+```{r}
+# Save cluster assignment as a column in your dataset
+data_cluster <- tot_data %>%
+  mutate(cluster = as.factor(kmeans_results$cluster))
+head(data_cluster)
+```
+
+
+```{r}
+# visualize k-means vlustering
+fviz_cluster(kmeans_results, data = tot_data2)
+```
+```{r}
+data_cluster %>%
+  ggplot(aes(re74, re78, color = cluster)) +
+  geom_point(aes(shape = trt))
+```
+
+```{r}
+data_cluster %>%
+  mutate(cluster = as.factor(data_cluster$cluster)) %>%
+  group_by(cluster) %>%
+  count(trt)
+data_cluster %>%
+  select_if(is.numeric) %>%
+  mutate(cluster = as.factor(data_cluster$cluster)) %>%
+  group_by(cluster) %>%
+  summarize_all(mean)
+```
+This cluster counts for 80.3% of the total variation in the dataset. \
+Most treated groups are in cluster 1, and the control groups are evenly distributed in cluster 1 and cluster 2. \
+Besides, cluster 2 has highest mean values of the real earning of 1974, 1975 and 1978. \
+One possible conclusion from k-means clustering is that treatment group did not really help on increasing the real earning of participants. 
+
+#### Dimensionality reduction
+```{r}
+# perform PCA
+pca <- prcomp(tot_data2)
+get_pca_var(pca)$coord %>% as.data.frame
+```
+There are 5 dimensions in total. 
+re75 contributed most on PC1. This means the dimension of greatest variability distinguishes high real earning in 1975 from the others, but this distinction is not so obvious, because re74 also made high contributions to PC1 (0.923). \
+Age contributed most on PC2. This means the dimension of second greatest variability distinguishes high age from the others. \
+Education contributed most on PC3, and explained some variability in the dataset.
+
+```{r}
+# plot to check the variation explained by each dimension
+plot(pca, type = "l")
+```
+Based on the plot, we can find that PC1, PC2 and PC3 explains most of the variability in the data. 
+
+#### Classification  and  Cross-validation
+```{r}
+# use logistic regression as a classifier
+fit <- glm(trt ~ re78, data = tot_data, family = "binomial")
+summary(fit)
+```
+```{r}
+# Calculate a predicted probability
+log_data <- tot_data %>% 
+  mutate(probability = predict(fit, type = "response"),
+         predicted = ifelse(probability > 0.1, 1, 0))
+head(log_data)
+```
+
+##### ROC
+```{r}
+library(ggplot2) 
+library(plotROC)
+# ROC curve
+ROC <- ggplot(log_data) + 
+  # here the binary variable need to be numeric to shown the ROC curve
+  geom_roc(aes(d = as.numeric(trt), m = probability))
+ROC
+```
+```{r}
+# Calculate the area under the curve
+calc_auc(ROC)
+```
+A AUC of 0.779 means there is a 77.9% chance that the model will be able to distinguish between positive class and negative class.
+
+```{r}
+tot_data$index <- 1:nrow(tot_data)
+# Select a fraction of the data for training purposes
+train <- sample_frac(tot_data, size = 0.5)
+
+# Select the rest of the data for the test dataset
+test <- anti_join(tot_data, train, by = "index")
+```
+
+
+```{r}
+# Fit a logistic model in the training data
+fit <- glm(trt ~ re78, data = train, family = "binomial")
+
+# Results in a data frame for training data
+df_train <- data.frame(
+  probability = predict(fit, newdata = train, type = "response"),
+  trt = train$trt,
+  data_name = "training")
+
+# Results in a data frame for test data
+df_test <- data.frame(
+  probability = predict(fit, newdata = test, type = "response"),
+  trt = test$trt,
+  data_name = "test")
+
+# Combined results
+df_combined <- rbind(df_train, df_test)
+```
+
+```{r}
+# evaluate the performance of glm classifier on train and test
+ROC <- ggplot(df_combined) + 
+  geom_roc(aes(d = as.numeric(trt), m = probability, color = data_name, n.cuts = 0))
+ROC
+```
+```{r}
+# Calculate the area under the curve
+calc_auc(ROC)
+```
+The glm classifier trained dataset has a higher AUC than the test dataset. This means the trained dataset has a higher chance that the model will be able to distinguish between positive class and negative class.
+
+#### k-fold cross-validation
+```{r}
+# Choose number of folds
+library(caret)
+k = 10
+
+set.seed(125)
+
+train_control <- trainControl(method = "cv",
+                              number = k)
+model <- train(re78 ~., data = tot_data, 
+               method = "glm",
+               trControl = train_control)
+print(model)
+```
+
+```{r}
+# Choose number of folds
+k = 10 
+
+# Randomly order rows in the dataset
+data <- tot_data[sample(nrow(tot_data)), ] 
+
+# Create k folds from the dataset
+folds <- cut(seq(1:nrow(data)), breaks = k, labels = FALSE)
+```
+
+```{r}
+
+for(i in 1:k){
+  # Create training and test sets
+  train <- data[folds != i, ] # all observations except in fold i
+  test <- data[folds == i, ]  # observations in fold i
+  
+  # Train model on training set (all but fold i)
+  fit <- glm(trt ~ re78, data = train, family = "binomial")
+  
+  # Test model on test set (fold i)
+  df_test <- data.frame(
+    probability = predict(fit, newdata = test, type = "response"),
+    trt = test$trt)
+  
+  # Consider the ROC curve for the test dataset
+  ROC <- ggplot(df_test) + 
+    geom_roc(aes(d = as.numeric(trt), m = probability, n.cuts = 0))
+    
+  # Get diagnostics for fold i (AUC)
+  print(calc_auc(ROC))
+
+}
+
+```
+```{r}
+# average performance
+mean(c(0.7659498, 0.7708535, 0.7711835, 0.776796, 0.8244898, 0.7787724, 0.7441392, 0.7825021, 0.8094599, 0.8042047))
+```
+The average performance across k folds is 0.783. \
+The classifier predict new observations with a relatively high accuracy. 
+There is no sign of overfitting since the error rate of train and test are pretty similar. 
