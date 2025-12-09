@@ -1,0 +1,459 @@
+---
+title: "BIOST 579 Final Project"
+author: "Zhuofu Li, Yifan Lin, Enya Liu"
+date: "2025-06-12"
+output: html_document
+---
+
+```{r}
+
+# Load libraries
+library(dplyr)
+library(caret)
+library(pROC)
+library(ResourceSelection)
+library(ggplot2)
+library(broom)
+```
+
+# Pre process Data
+## Part 1. Handle Missingness
+By exmaining missingness in the data, we identify which variables are missing and how to handle them.
+
+BMI has a over 50% missing rate, therefore we do not use it in further analysis.
+
+Other records with missingness in radiologist's assessment, family history, hormone therapy, estrogen receptor status will be dropped. 
+
+As an result, we have 35237 (88.1%) records from 32503 (88.7%) patients.
+```{r handle_missingness}
+missing_data <- data %>%
+    summarise(
+        unknown_assess = sum(assess_c == 0),
+        missing_CaTypeO  = sum(CaTypeO == 9), 
+        missing_famhis = sum(famhx_c == 9),
+        missing_hrt = sum(hrt_c == 9),
+        missing_biophx = sum(biophx_c == 9),
+        missing_bmi = sum(bmi_c == -99),
+        missing_estrrecep = sum(estrecep_c == 9)    
+    )
+knitr::kable(missing_data, digits = 3, caption = "Missingness in the data")
+
+# drop patients with missing records from selected covariates
+processed_data <- data %>%
+    filter(assess_c != 0 & CaTypeO != 9 & famhx_c != 9 & hrt_c != 9 & estrecep_c != 9)
+
+# examine the number of patients and records left
+n_patients <- nrow(processed_data %>% group_by(StudyID_c) %>% summarise(n = n()))
+prop_patients <- n_patients / nrow(data %>% group_by(StudyID_c) %>% summarise(n = n()))
+n_records <- nrow(processed_data)
+prop_records <- n_records / nrow(data)
+knitr::kable(data.frame(n_patients, prop_patients, n_records, prop_records), digits = 3, caption = "Number of patients and records after missingness handling")
+```
+
+## Part 2. Examine Repeated Measures
+A critical modeling question for this dataset is whether we can treat the data as independent samples (a.k.a. if correct mammogram reuslt in different measures are independent). 
+Therefore, we examine the repeated measures of the subject in the data to answer the following questions: 
+1. What's the distribution of the number of measures? - See table
+2. How many and what's the proportion of patients have multiple records? - See table
+3. Are correct mammogram results in different measures independent? - No
+    Among patients with 2 records (2475 patients), how many have correct mammogram result in the first record (event A)? - P(A)
+    Among patients with 2 records (2475 patients), how many have correct mammogram result in the second record (event B)? - P(B)
+    Among patients with 2 records (2475 patients), how many have correct mammogram result in both records? - P(A and B)
+    Are event A and B independent? a.k.a. P(A and B) = P(A) * P(B)? 
+
+As a result, we found that repeated measures are not independent, therefore we only keep the first measure for each patient in the dataset to proceed with the analysis.
+
+## Part 2.1. Distribution of Repeated Measures
+```{r repeated_measures}
+# filter for repeated measures
+repeated_measure_id <- processed_data %>%
+    group_by(StudyID_c) %>%
+    summarise(n = n()) %>%
+    filter(n > 1) %>%
+    select(StudyID_c)
+# repeated measure table
+repeated_measure_data <- processed_data %>%
+    filter(StudyID_c %in% repeated_measure_id$StudyID_c)
+
+# examine measure times distribution among patients
+repeated_measure_count <- processed_data %>%
+    group_by(StudyID_c) %>%
+    summarise(n = n())
+ggplot(repeated_measure_count, aes(x = n)) +
+    geom_histogram(binwidth = 1, fill = "steelblue", color = "white") +
+    # add numbers to the histogram
+    geom_text(stat = "count", aes(label = ..count..), vjust = -0.5) +
+    # add proportions of pateints with multiple records
+    geom_text(stat = "count", aes(label = paste0("(", round(..count../nrow(repeated_measure_count)*100, 1), "%)")), vjust = 1.5) +
+    labs(title = "Distribution of Repeated Measures", x = "Number of Repeated Measures", y = "Count") +
+    theme_minimal()
+```
+
+## Part 2.2. Are Mammogram Result Correctness Independent?
+```{r independent_measure_analysis}
+calculate_pr_correct <- function(data) {
+    data$correct <- ifelse(((data$assess_c < 4) & (data$cancer_c == 0)) | 
+                           ((data$assess_c >= 4) & (data$cancer_c == 1)), 
+                           1, 0)
+    pr <- sum(data$correct == 1) / nrow(data)
+    return(pr)
+}
+
+# Here I examine the number of patients with 2 measures (bc other measure_count subjects are too few)
+two_measure_patients <- processed_data %>%
+    group_by(StudyID_c) %>%
+    summarise(n = n()) %>%
+    filter(n == 2) %>%
+    select(StudyID_c)
+two_measure_data <- processed_data %>%
+    filter(StudyID_c %in% two_measure_patients$StudyID_c)
+p_ab <- calculate_pr_correct(two_measure_data)
+
+first_measure_data <- two_measure_data %>%
+    group_by(StudyID_c) %>%
+    slice(1) %>%
+    select(StudyID_c, assess_c, cancer_c)
+p_a <- calculate_pr_correct(first_measure_data)
+
+second_measure_data <- two_measure_data %>%
+    group_by(StudyID_c) %>%
+    slice(2) %>%
+    select(StudyID_c, assess_c, cancer_c)
+p_b <- calculate_pr_correct(second_measure_data)
+
+print(p_ab == p_a * p_b) # not independent
+```
+
+# Part 2.3. Remove Repeated Measures
+```{r remove_repeated_measures}
+processed_data <- processed_data %>%
+    group_by(StudyID_c) %>%
+    slice(1) %>%
+    ungroup()
+write.csv(processed_data, "processed_data.csv", row.names = FALSE)
+
+n_patients <- nrow(processed_data %>% group_by(StudyID_c) %>% summarise(n = n()))
+prop_patients <- n_patients / nrow(data %>% group_by(StudyID_c) %>% summarise(n = n()))
+n_records <- nrow(processed_data)
+prop_records <- n_records / nrow(data)
+knitr::kable(data.frame(n_patients, prop_patients, n_records, prop_records), digits = 3, caption = "Number of patients and records after missingness handling")
+
+```
+
+## Conclusion
+The preprocessing of the BCSC dataset includes: (1) handling missingness, (2) examining repeated measures. 
+We ended up removing 4763 (11.9%) records with missingness in the selected covariates and additional 2603 (6.5%) records with repeated measures.
+The final dataset contains 32503 (81.3%) records from 32503 (88.7%) patients.
+
+# Question 1 Statistical Analysis Result
+```{r}
+processed_data <- read.csv("processed_data.csv")
+
+# only keep the first row of each study_id
+processed_data <- processed_data %>%
+  group_by(StudyID_c) %>%
+  slice(1) %>%
+  ungroup()
+
+# Question 1
+### sensitivity ###
+processed_data$TP <- ifelse(processed_data$cancer_c==1 & processed_data$assess_c %in% c(4, 5),1,0)
+processed_data$FN <- ifelse(processed_data$cancer_c == 1 & processed_data$assess_c %in% c(1,2,3),1,0)
+
+# film 
+nrow(processed_data[processed_data$TP == 1 & processed_data$mammtype == 1,])
+nrow(processed_data[processed_data$FN == 1 & processed_data$mammtype == 1,])
+# digital
+nrow(processed_data[processed_data$TP == 1 & processed_data$mammtype == 2,])
+nrow(processed_data[processed_data$FN == 1 & processed_data$mammtype == 2,])
+
+# Sensitivity table
+sensitivity_table <- matrix(c(5,12,18,14), nrow = 2, byrow = FALSE,
+                            dimnames = list(Result = c("TP", "FN"),
+                                            Modality = c("Digital", "Film")))
+sensitivity_table
+
+# Sensitivity = TP / (TP + FN)
+sensitivity_digital <- sensitivity_table["TP", "Digital"] / sum(sensitivity_table[, "Digital"])
+sensitivity_film    <- sensitivity_table["TP", "Film"] / sum(sensitivity_table[, "Film"])
+
+sensitivity_digital  # ≈ 0.294
+sensitivity_film     # ≈ 0.562
+
+# chi sq test with Yates' continuity correction
+chisq.test(sensitivity_table)
+
+# fisher's exact test
+fisher.test(sensitivity_table)
+
+# without Yates' continuity correction
+chisq.test(sensitivity_table, correct = FALSE)
+
+### specificity ###
+processed_data$TN <- ifelse(processed_data$cancer_c== 0 & processed_data$assess_c %in% c(1,2,3),1,0)
+processed_data$FP <- ifelse(processed_data$cancer_c == 0 & processed_data$assess_c %in% c(4,5),1,0)
+
+# film 
+nrow(processed_data[processed_data$TN == 1 & processed_data$mammtype == 1,])
+nrow(processed_data[processed_data$FP == 1 & processed_data$mammtype == 1,])
+# digital
+nrow(processed_data[processed_data$TN == 1 & processed_data$mammtype == 2,])
+nrow(processed_data[processed_data$FP == 1 & processed_data$mammtype == 2,])
+
+# specificity table
+specificity_table <- matrix(c(15803,11,16620,20), nrow = 2, byrow = FALSE,
+                            dimnames = list(Result = c("TN", "FP"),
+                                            Modality = c("Digital", "Film")))
+specificity_table
+
+# specificity = TN / (TN+FP)
+specificity_digital <- specificity_table["TN", "Digital"] / sum(specificity_table[, "Digital"])
+specificity_film    <- specificity_table["TN", "Film"] / sum(specificity_table[, "Film"])
+
+specificity_digital  # ≈ 0.999
+specificity_film     # ≈ 0.998
+
+# chi sq test
+chisq.test(specificity_table)
+
+# fisher's exact test
+fisher.test(specificity_table)
+
+# without Yates' continuity correction
+chisq.test(specificity_table, correct = FALSE)
+
+### PPV ###
+# film 
+nrow(processed_data[processed_data$TP == 1 & processed_data$mammtype == 1,])
+nrow(processed_data[processed_data$FP == 1 & processed_data$mammtype == 1,])
+# digital
+nrow(processed_data[processed_data$TP == 1 & processed_data$mammtype == 2,])
+nrow(processed_data[processed_data$FP == 1 & processed_data$mammtype == 2,])
+
+# ppv table
+ppv_table <- matrix(c(5,11,18,20), nrow = 2, byrow = FALSE,
+                            dimnames = list(Result = c("TP", "FP"),
+                                            Modality = c("Digital", "Film")))
+ppv_table
+
+# ppv = TP / (TP+FP)
+ppv_digital <- ppv_table["TP", "Digital"] / sum(ppv_table[, "Digital"])
+ppv_film    <- ppv_table["TP", "Film"] / sum(ppv_table[, "Film"])
+
+ppv_digital  # ≈ 0.312
+ppv_film     # ≈ 0.473
+
+# chi sq test
+chisq.test(ppv_table)
+
+# fisher's exact test
+fisher.test(ppv_table)
+
+# without Yates' continuity correction
+chisq.test(ppv_table, correct = FALSE)
+```
+
+# Question 2 and Question 3 Statistical Analysis Results
+```{r}
+data <- read.csv("processed_data.csv")
+all_data <- read.csv("BCSC.csv")
+
+# binarize assess_c: if level is 1, 2, or 3, then not BC; if level is 4, or 5, then yes BC. 
+data$binary_assess_c <- ifelse(data$assess_c < 4, 0, 1)
+data$correct <- ifelse(data$binary_assess_c == data$cancer_c, 1, 0)
+
+all_data$binary_assess_c <- ifelse(all_data$assess_c < 4, 0, 1)
+all_data$correct <- ifelse(all_data$binary_assess_c == all_data$cancer_c, 1, 0)
+```
+
+```{r model_q2}
+# Fit a logistic regression model
+model <- glm(correct ~ mammtype*age_c + density_c + famhx_c + biophx_c + CaTypeO + estrecep_c, data = data, family = binomial)
+knitr::kable(data.frame(summary(model)$coefficients), digits = 3, caption = "Coefficient Summary of the q2 Logistic Regression Model")
+
+all_model <- glm(correct ~ mammtype*age_c + density_c + famhx_c + biophx_c + CaTypeO + estrecep_c, data = all_data, family = binomial)
+
+bind_rows(
+  tidy(all_model) %>% mutate(model = "All data"),
+  tidy(model) %>% mutate(model = "IID")
+) %>%
+  ggplot(aes(x = term, y = estimate, color = model)) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error),
+                width = 0.2, position = position_dodge(width = 0.5)) +
+  theme_minimal() +
+  coord_flip()
+tidy_all <- tidy(all_model) %>% rename(estimate_all = estimate, se_all = std.error, p_all = p.value)
+tidy_iid <- tidy(model) %>% rename(estimate_iid = estimate, se_iid = std.error, p_iid = p.value)
+
+# Join on terms
+comparison <- left_join(tidy_all, tidy_iid, by = "term") %>%
+  mutate(
+    abs_diff = abs(estimate_all - estimate_iid),
+    rel_diff = abs_diff / abs(estimate_all) * 100
+  ) %>% 
+  select(term, estimate_all, se_all, p_all, estimate_iid, se_iid, p_iid, abs_diff, rel_diff)
+knitr::kable(data.frame(comparison), digits = 3, caption = "Comparison of Full vs IID-only Model Estimates")
+```
+
+```{r model_q3}
+# Fit a logistic regression model
+model <- glm(correct ~ mammtype*CaTypeO + density_c + famhx_c + biophx_c + age_c + estrecep_c, data = data, family = binomial)
+knitr::kable(data.frame(summary(model)$coefficients), digits = 3, caption = "Coefficient Summary of the q3 Logistic Regression Model")
+
+all_model <- glm(correct ~ mammtype*CaTypeO + density_c + famhx_c + biophx_c + age_c + estrecep_c, data = all_data, family = binomial)
+
+bind_rows(
+  tidy(all_model) %>% mutate(model = "All data"),
+  tidy(model) %>% mutate(model = "IID")
+) %>%
+  ggplot(aes(x = term, y = estimate, color = model)) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error),
+                width = 0.2, position = position_dodge(width = 0.5)) +
+  theme_minimal() +
+  coord_flip()
+
+tidy_all <- tidy(all_model) %>% rename(estimate_all = estimate, se_all = std.error, p_all = p.value)
+tidy_iid <- tidy(model) %>% rename(estimate_iid = estimate, se_iid = std.error, p_iid = p.value)
+
+# Join on terms
+comparison <- left_join(tidy_all, tidy_iid, by = "term") %>%
+  mutate(
+    abs_diff = abs(estimate_all - estimate_iid),
+    rel_diff = abs_diff / abs(estimate_all) * 100
+  ) %>% 
+  select(term, estimate_all, se_all, p_all, estimate_iid, se_iid, p_iid, abs_diff, rel_diff)
+knitr::kable(data.frame(comparison), digits = 3, caption = "Comparison of Full vs IID-only Model Estimates")
+```
+
+# Question 4 Statistical Analysis Result
+
+```{r}
+
+# Load cleaned dataset
+data <- read.csv("processed_data.csv")
+
+# Replace -99 in BMI with NA
+data$bmi_c[data$bmi_c == -99] <- NA
+
+# Drop rows with missing BMI (only remaining missingness)
+data <- data %>% filter(!is.na(bmi_c))
+
+```
+
+
+
+```{r}
+
+# Convert Categorical Variables to Factors
+data <- data %>%
+  mutate(
+    assess_c = factor(assess_c),
+    density_c = factor(density_c),
+    famhx_c = factor(famhx_c),
+    hrt_c = factor(hrt_c),
+    biophx_c = factor(biophx_c),
+    compfilm_c = factor(compfilm_c),
+    prvmam_c = factor(prvmam_c),
+    mammtype = factor(mammtype),
+    cancer_c = factor(cancer_c)
+  )
+
+
+```
+
+
+
+```{r}
+
+# Split into Training and Test Sets
+
+set.seed(123)
+train_index <- createDataPartition(data$cancer_c, p = 0.8, list = FALSE)
+train <- data[train_index, ]
+test <- data[-train_index, ]
+
+
+```
+
+
+
+```{r}
+
+# Fit logistic regression model with BI-RADS + patient characteristics
+model <- glm(cancer_c ~ assess_c + age_c + density_c + famhx_c + hrt_c +
+               biophx_c + bmi_c + compfilm_c + prvmam_c + mammtype,
+             data = train, family = binomial)
+
+summary(model)
+
+
+
+```
+
+
+
+```{r}
+
+# Step 6: Predict probabilities on the test set
+test$pred_prob <- predict(model, newdata = test, type = "response")
+
+```
+
+
+
+
+```{r}
+
+# Step 7: Evaluate discrimination (AUC)
+roc_obj <- roc(test$cancer_c, test$pred_prob)
+auc_value <- auc(roc_obj)
+print(paste("AUC:", round(auc_value, 3)))
+
+```
+
+
+
+
+```{r}
+
+# Step 8: Calibration curve (group predictions into deciles)
+test$decile <- ntile(test$pred_prob, 10)
+test_summary <- test %>%
+  group_by(decile) %>%
+  summarise(
+    mean_pred = mean(pred_prob),
+    mean_obs = mean(as.numeric(as.character(cancer_c)))
+  )
+
+
+```
+
+
+
+
+```{r}
+
+# Plot calibration curve
+plot(test_summary$mean_pred, test_summary$mean_obs, type = "b",
+     xlab = "Mean Predicted Probability", ylab = "Observed Cancer Rate",
+     main = "Calibration Curve")
+abline(0, 1, col = "red", lty = 2)
+
+# Add legend
+legend("topleft", legend = c("Calibration Curve", "Perfect Calibration"),
+       col = c("black", "red"), lty = c(1, 2), pch = c(1, NA))
+
+
+```
+
+
+```{r}
+
+# Step 9: Hosmer–Lemeshow goodness-of-fit test
+hl_test <- hoslem.test(as.numeric(as.character(test$cancer_c)),
+                       test$pred_prob, g = 10)
+print(hl_test)
+
+```
